@@ -5,7 +5,7 @@ import {timingSafeEqual, createHmac} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),port=Number(process.env.PORT||3000),secret=process.env.APP_PASSWORD||'';
 if(secret.length<16){console.error('Set APP_PASSWORD (minimum 16 characters)');process.exit(1)}
-const type={'.html':'text/html','.js':'text/javascript','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
+const type={'.html':'text/html','.css':'text/css','.js':'text/javascript','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
 const budget=Number(process.env.MONTHLY_AI_BUDGET_USD||5),usageFile=path.join(root,'.ai-usage.json');
 const send=(res,code,obj)=>{res.writeHead(code,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(obj))};
 async function getUsage(){let data={month:'',spent:0};try{data=JSON.parse(await fs.readFile(usageFile,'utf8'))}catch{}return data.month===new Date().toISOString().slice(0,7)?data:{month:new Date().toISOString().slice(0,7),spent:0}}
