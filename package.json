@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/dates.test.cjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.13"
   }
 }

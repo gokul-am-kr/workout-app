@@ -12,6 +12,16 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(100%,5
 @media(max-width:360px){main{padding-left:16px;padding-right:16px}.brand{font-size:21px;gap:7px}.pill{font-size:9px;padding:6px}h1{font-size:34px}.balance-card{padding:17px}.balance-number strong{font-size:46px}.balance-art{width:60px;flex-basis:60px}.action{padding:13px}.action strong{font-size:13px}.journal-card .eyebrow{letter-spacing:.7px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
+.date-toolbar{margin:0 0 22px;padding:10px 12px;background:#ffffff06;border:1px solid #ffffff18;border-radius:18px}
+.date-picker-row{display:flex;align-items:center;gap:10px}
+.date-picker-row label{display:flex;align-items:center;gap:10px;flex:1;min-width:0;white-space:nowrap;color:#cbd1c2;font-size:11px}
+.date-picker-row input{width:100%;min-width:0;min-height:44px;margin:0;padding:8px;font-size:14px}
+.date-picker-row button{flex:0 0 40px;min-height:44px;border:1px solid #ffffff15;border-radius:12px;background:#ffffff08;color:var(--amber);font-size:24px}
+.date-toolbar button:disabled{cursor:default;opacity:.3}
+.date-shortcuts{display:flex;align-items:center;gap:7px;margin-top:7px;flex-wrap:wrap}
+.date-shortcuts>span{flex:1;min-width:100px;font-size:10px;color:#c3cdb8}
+.date-shortcuts button{min-height:36px;padding:5px 10px;border:1px solid #ffffff17;background:#edb86f0c;color:#efcc9a;border-radius:10px;font-size:11px}
+@media(max-width:360px){.date-picker-row{gap:6px}.date-picker-row label{gap:6px;font-size:10px}.date-picker-row button{flex-basis:34px}.date-picker-row input{padding:6px;font-size:12px}}
 /* Frosted surfaces: warm light, tactile edges, and quiet depth. */
 body {
   background: radial-gradient(ellipse at 5% 8%, #92794c24, transparent 42%),
