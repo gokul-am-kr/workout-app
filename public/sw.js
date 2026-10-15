@@ -1,2 +1,6 @@
-const K='platewise-pulse-v7';self.addEventListener('install',e=>e.waitUntil(caches.open(K).then(c=>c.addAll(['/','/app.js','/manifest.webmanifest','/icon.svg'])).then(()=>self.skipWaiting())));self.addEventListener('fetch',e=>{if(e.request.method==='GET'&&!e.request.url.includes('/api/'))e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});
-self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!=='platewise-pulse-v7').map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+const CACHE='platewise-pulse-v9';
+self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(['/icon.svg','/manifest.webmanifest'])).then(()=>self.skipWaiting()))});
+self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',event=>{const req=event.request,url=new URL(req.url);if(url.origin!==self.location.origin||req.method!=='GET')return;
+if(req.mode==='navigate'||url.pathname.startsWith('/api/')||url.pathname.startsWith('/auth/')||url.pathname==='/login')return;
+event.respondWith(fetch(req).then(response=>{if(response.ok&&response.type==='basic'){const copy=response.clone();caches.open(CACHE).then(c=>c.put(req,copy))}return response}).catch(()=>caches.match(req)))});
