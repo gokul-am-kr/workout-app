@@ -1,7 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {timingSafeEqual} from 'node:crypto';
+import {timingSafeEqual, createHmac} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),port=Number(process.env.PORT||3000),secret=process.env.APP_PASSWORD||'';
 if(secret.length<16){console.error('Set APP_PASSWORD (minimum 16 characters)');process.exit(1)}
@@ -11,12 +11,21 @@ const send=(res,code,obj)=>{res.writeHead(code,{'Content-Type':'application/json
 async function getUsage(){let data={month:'',spent:0};try{data=JSON.parse(await fs.readFile(usageFile,'utf8'))}catch{}return data.month===new Date().toISOString().slice(0,7)?data:{month:new Date().toISOString().slice(0,7),spent:0}}
 let queue=Promise.resolve();
 async function charge(amount){queue=queue.then(async()=>{const v=await getUsage();v.spent+=amount;await fs.writeFile(usageFile,JSON.stringify(v))});await queue}
-function allowed(req){let auth=req.headers.authorization||'';if(!auth.startsWith('Basic '))return false;try{let decoded=Buffer.from(auth.slice(6),'base64').toString();let i=decoded.indexOf(':');if(i<0||decoded.slice(0,i)!==(process.env.APP_USERNAME||'platewise'))return false;const a=Buffer.from(decoded.slice(i+1)),b=Buffer.from(secret);return a.length===b.length&&timingSafeEqual(a,b)}catch{return false}}
+function same(a,b){const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&timingSafeEqual(x,y)}
+function signature(expires){return createHmac('sha256',secret).update(String(expires)).digest('hex')}
+function allowed(req,res){
+const cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('pw_session='));
+if(cookie){const token=cookie.slice('pw_session='.length).split('.');const expires=Number(token[0]);if(token.length===2&&Number.isSafeInteger(expires)&&expires>Date.now()&&expires<Date.now()+31*86400000&&same(token[1],signature(expires)))return true}
+const auth=req.headers.authorization||'';
+if(!auth.startsWith('Basic '))return false;
+try{const value=Buffer.from(auth.slice(6),'base64').toString();const i=value.indexOf(':');if(i<0||value.slice(0,i)!==(process.env.APP_USERNAME||'platewise')||!same(value.slice(i+1),secret))return false;
+const expires=Date.now()+30*86400000;res.setHeader('Set-Cookie','pw_session='+expires+'.'+signature(expires)+'; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000');return true}catch{return false}
+}
 async function body(req,limit=9000000){let chunks=[],size=0;for await(const c of req){size+=c.length;if(size>limit)throw Error('File too large');chunks.push(c)}return JSON.parse(Buffer.concat(chunks).toString())}
 async function completion(messages){const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-4.1-mini',response_format:{type:'json_object'},messages})});const data=await r.json();if(!r.ok)throw Error(data.error?.message||'AI request failed');const u=data.usage||{};await charge(((u.prompt_tokens||0)*0.4+(u.completion_tokens||0)*1.6)/1000000);return JSON.parse(data.choices[0].message.content)}
 const parsePrompt='Parse spoken or typed gym exercises into JSON object with keys exercise, sets, reps, weight, warning. Kilograms. Interpret "2 reps" as one set of two reps; "2 sets of 10 reps" as two sets. For missing numbers use 0 and explain warning. No invented values. One exercise per log.';
 const server=http.createServer(async(req,res)=>{try{
-if(!allowed(req)){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Platewise"','Cache-Control':'no-store'});return res.end('Login required')}
+if(!allowed(req,res)){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Platewise"','Cache-Control':'no-store'});return res.end('Login required')}
 if(req.url==='/api/status')return send(res,200,{configured:!!process.env.OPENAI_API_KEY,usage:await getUsage(),budget});
 if(req.url?.startsWith('/api/')){
 if(req.method!=='POST')return send(res,405,{error:'Method not allowed'});
