@@ -1,0 +1,1 @@
+const K='platewise-pulse-v1';self.addEventListener('install',e=>e.waitUntil(caches.open(K).then(c=>c.addAll(['/','/app.js','/manifest.webmanifest','/icon.svg'])).then(()=>self.skipWaiting())));self.addEventListener('fetch',e=>{if(e.request.method==='GET'&&!e.request.url.includes('/api/'))e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});
