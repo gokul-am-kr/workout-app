@@ -43,6 +43,8 @@ if(req.url==='/api/parse'){const {text}=await body(req,20000);const result=await
 if(req.url==='/api/voice'){const {audio,mime}=await body(req,11000000);const f=transcriptionForm({audio,mime,kind:'workout'});const r=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY},body:f});const v=await r.json();if(!r.ok)throw Error(v.error?.message||'Transcription failed');await charge(.006);const p=await completion([{role:'system',content:parsePrompt},{role:'user',content:String(v.text||'').slice(0,500)}]);return send(res,200,{...p,transcript:v.text})}
 return send(res,404,{error:'Unknown API'})}
 if(req.method!=='GET')return send(res,405,{error:'Method not allowed'});
+const vendor={'/vendor/three.module.js':'three.module.js','/vendor/three.core.js':'three.core.js'};
+if(vendor[req.url]){const bytes=await fs.readFile(path.join(root,'node_modules','three','build',vendor[req.url]));res.writeHead(200,{'Content-Type':'text/javascript','Cache-Control':'no-cache'});return res.end(bytes)}
 let requested=decodeURIComponent(req.url.split('?')[0]);if(requested==='/')requested='/index.html';const base=path.join(root,'public'),file=path.resolve(base,'.'+requested);if(!file.startsWith(base+path.sep))return send(res,403,{error:'Forbidden'});const bytes=await fs.readFile(file);res.writeHead(200,{'Content-Type':type[path.extname(file)]||'application/octet-stream','Cache-Control':'no-cache'});res.end(bytes)
 }catch(e){send(res,e.code==='ENOENT'?404:400,{error:e.message||'Request failed'})}});
 server.listen(port,()=>console.log('Platewise on port '+port));

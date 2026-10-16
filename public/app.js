@@ -51,7 +51,42 @@ function previousExercise(name,date=logDate()){
   return [...db.sets].reverse().filter(x=>x.date<date&&exerciseKey(x.exercise)===exerciseKey(name)).sort((a,b)=>b.date.localeCompare(a.date))[0];
 }
 function weightBasis(mode){return mode==='per_side'?'per side':mode==='total'?'total weight':'as entered'}
+let selectedMuscle=null;
+function selectMuscle(group){selectedMuscle=group;renderWeeklyMuscles()}
+function drawMuscleMapping(){
+  const host=$('muscleMappingChoices');host.replaceChildren();const name=$('mappingExercise').value;
+  const mapped=window.WorkoutMuscles.infer(name,db.muscleOverrides||{});
+  for(const [key,label] of Object.entries(window.WorkoutMuscles.groups)){
+    const row=document.createElement('label');const input=document.createElement('input');input.type='checkbox';input.value=key;input.checked=mapped.includes(key);row.append(input,document.createTextNode(label));host.append(row);
+  }
+  $('saveMuscleMapping').disabled=!name;$('resetMuscleMapping').disabled=!name;
+}
+$('mappingExercise').onchange=drawMuscleMapping;
+$('saveMuscleMapping').onclick=()=>{const name=$('mappingExercise').value;if(!name)return;db.muscleOverrides??={};db.muscleOverrides[window.WorkoutMuscles.key(name)]=[...$('muscleMappingChoices').querySelectorAll('input')].filter(x=>x.checked).map(x=>x.value);save();notify('Muscle mapping updated')};
+$('resetMuscleMapping').onclick=()=>{const name=$('mappingExercise').value;if(!name)return;delete (db.muscleOverrides||{})[window.WorkoutMuscles.key(name)];save();notify('Automatic muscle mapping restored')};
+function renderWeeklyMuscles(){
+  const data=window.WorkoutMuscles.summarize(db.sets,logDate(),db.muscleOverrides||{});
+  window.weeklyBodyState={...data,selected:selectedMuscle};
+  $('muscleWeekRange').textContent=dateLabel(data.start)+' – '+dateLabel(data.end);
+  $('muscleCoverage').textContent=data.covered+' / '+Object.keys(data.counts).length+' groups';
+  $('muscleWeekTotals').textContent=data.totalSets+' logged sets · '+data.days+' training days';
+  const list=$('muscleGroupButtons');list.replaceChildren();
+  for(const [key,label] of [[null,'All muscles'],...Object.entries(window.WorkoutMuscles.groups)]){
+    const b=document.createElement('button');b.textContent=label+(key?' · '+data.counts[key]:'');b.setAttribute('aria-pressed',String(key===selectedMuscle));b.className=key&&data.counts[key]?'muscle-chip trained':'muscle-chip';b.onclick=()=>selectMuscle(key);list.append(b);
+  }
+  const info=$('muscleSelection');info.replaceChildren();const title=document.createElement('strong');title.textContent=selectedMuscle?window.WorkoutMuscles.groups[selectedMuscle]+' · '+data.counts[selectedMuscle]+' sets involving this muscle':data.totalSets?'Your week, in motion':'No workouts logged in this period';info.append(title);
+  const text=document.createElement('p');text.textContent=selectedMuscle?(data.sources[selectedMuscle].map(x=>x.exercise+' ('+x.sets+' sets, '+dateLabel(x.date)+')').join(' · ')||'No mapped sets recorded for this muscle in this period.'):'Tap a body region or muscle name to see the exercises behind it.';info.append(text);
+  $('muscleUnknown').textContent=data.unknown.length?'Not mapped: '+[...new Set(data.unknown.map(x=>x.exercise))].join(', ')+'. Use Adjust muscle mapping below.':'';
+  const max=Math.max(1,...Object.values(data.counts));
+  for(const part of document.querySelectorAll('#bodyFallback [data-muscle]')){const key=part.dataset.muscle;part.style.fill=data.counts[key]?'#edb86f':'#59614f';part.style.opacity=data.counts[key]?String(.45+.55*data.counts[key]/max):'.35';part.style.filter=selectedMuscle===key?'drop-shadow(0 0 5px #ffe4b6)':'none'}
+  const select=$('mappingExercise'),previous=select.value;select.replaceChildren();
+  for(const name of [...new Set(db.sets.filter(x=>x.date>=data.start&&x.date<=data.end).map(x=>x.exercise))]){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option)}
+  if([...select.querySelectorAll('option')].some(x=>x.value===previous))select.value=previous;drawMuscleMapping();
+  window.dispatchEvent(new window.CustomEvent('weekly-muscles',{detail:window.weeklyBodyState}));
+}
+window.addEventListener('muscle-pick',e=>selectMuscle(e.detail));
 function renderTraining(){
+  renderWeeklyMuscles();
   const entries=db.sets.filter(x=>x.date===logDate());
   $('trainingDate').textContent=logDate()===now()?'Today’s training':dateLabel(logDate());
   $('trainingExercises').textContent=entries.length;
