@@ -54,6 +54,41 @@ test('text/photo/voice retain starting date across asynchronous analysis',async(
 test('selected-day wellness and workout entries stay isolated',()=>{
  const {run,$,read,window}=setup();run("selectDate('2024-02-29')");$('quickWater').onclick();assert.equal($('waterValue').textContent,'250 ml');
  run("selectDate('2024-03-01')");assert.equal($('waterValue').textContent,'0 ml');
- run("selectDate('2024-02-29');workoutForm({exercise:'Squat',sets:2,reps:10,weight:40})");$('workoutresult').querySelector('button').onclick();assert.equal(read().sets[0].date,'2024-02-29');assert.equal($('setsToday').textContent,'2');
+ run("selectDate('2024-02-29');workoutForm({exercise:'Squat',sets:2,reps:10,weight:40})");$('workoutresult').querySelector('.workout-save').onclick();assert.equal(read().sets[0].date,'2024-02-29');assert.equal($('setsToday').textContent,'2');
  for(const tab of ['home','food','workout','wellness','progress']){window.show(tab);assert.equal($(tab).hidden,false);assert.equal($('logDate').value,'2024-02-29')}
+});
+test('different weights/reps per set persist with per-side basis and can be edited',()=>{
+ const {run,$,read,window}=setup();
+ run("selectDate('2024-02-29');workoutForm({exercise:'Incline chest press',sets:3,weightMode:'per_side',setDetails:[{weight:20,reps:15},{weight:25,reps:10},{weight:25,reps:8}]})");
+ $('workoutresult').querySelector('.workout-save').onclick();
+ const saved=read().sets[0];assert.equal(saved.weightMode,'per_side');assert.equal(saved.sets,3);assert.deepEqual(saved.setDetails,[{weight:20,reps:15},{weight:25,reps:10},{weight:25,reps:8}]);
+ assert.equal($('setsToday').textContent,'3');assert.match($('feed').textContent,/20 kg per side × 15 reps/);assert.match($('feed').textContent,/25 kg per side × 10 reps/);
+ window.document.querySelector('.edit-workout').onclick();const rows=$('workoutresult').querySelectorAll('.set-editor-row');rows[1].querySelector('input').value='27.5';$('workoutresult').querySelector('.workout-save').onclick();
+ assert.equal(read().sets.length,1);assert.equal(read().sets[0].setDetails[1].weight,27.5);assert.equal(read().sets[0].setDetails[0].weight,20);
+});
+test('missing third set is blank and must be entered rather than guessed',()=>{
+ const {run,$,read}=setup();
+ run("workoutForm({exercise:'Incline chest press',sets:3,weightMode:'per_side',setDetails:[{weight:20,reps:15},{weight:25,reps:10}]})");
+ const rows=$('workoutresult').querySelectorAll('.set-editor-row');assert.equal(rows.length,3);assert.equal(rows[2].querySelector('input').value,'');
+ $('workoutresult').querySelector('.workout-save').onclick();assert.equal(read().sets.length,0);
+ const inputs=rows[2].querySelectorAll('input');inputs[0].value='25';inputs[1].value='8';$('workoutresult').querySelector('.workout-save').onclick();assert.equal(read().sets[0].setDetails[2].reps,8);
+});
+test('manual set rows support adding/removing and validate weights and reps',()=>{
+ const {run,$,read}=setup();$('manualWorkout').onclick();
+ const host=$('workoutresult');host.querySelector('input').value='Push up';
+ host.querySelector('.add-set').onclick();assert.equal(host.querySelectorAll('.set-editor-row').length,2);
+ host.querySelector('.remove-set').onclick();assert.equal(host.querySelectorAll('.set-editor-row').length,1);assert.equal(host.querySelector('.remove-set').disabled,true);
+ const inputs=host.querySelector('.set-editor-row').querySelectorAll('input');
+ inputs[0].value='-1';inputs[1].value='10';host.querySelector('.workout-save').onclick();assert.equal(read().sets.length,0);
+ inputs[0].value='0';inputs[1].value='1.5';host.querySelector('.workout-save').onclick();assert.equal(read().sets.length,0);
+ inputs[1].value='15';host.querySelector('.workout-save').onclick();assert.equal(read().sets[0].setDetails[0].weight,0);assert.equal(read().sets[0].sets,1);
+});
+test('old uniform workout logs still render and contribute correct set count',()=>{
+ const {run,$}=setup();run("db.sets.push({date:logDate(),exercise:'Bench press',sets:3,reps:10,weight:60});render()");
+ assert.equal($('setsToday').textContent,'3');assert.equal($('feed').querySelectorAll('.logged-sets li').length,3);assert.match($('feed').textContent,/60 kg × 10 reps/);
+});
+test('workout parsing retains selected date while response is pending',async()=>{
+ const t=setup(),{run,$}=t;Object.assign(t.sample,{exercise:'Incline chest press',sets:2,weightMode:'per_side',setDetails:[{weight:20,reps:15},{weight:25,reps:10}]});
+ run("selectDate('2024-02-29')");$('transcript').value='Incline chest press 20 kg per side 15 reps then 25 kg 10 reps';const task=$('parse').onclick();run("selectDate('2024-03-01')");t.resolve();await task;
+ $('workoutresult').querySelector('.workout-save').onclick();assert.equal(t.read().sets[0].date,'2024-02-29');assert.equal($('logDate').value,'2024-02-29');assert.equal(t.read().sets[0].setDetails[1].weight,25);
 });
