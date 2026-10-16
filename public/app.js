@@ -25,7 +25,7 @@ function meter(id,fill,value,max){const safe=Math.max(0,Number(value)||0);$(fill
 const row=(label,val)=>{const d=document.createElement('div');d.className='line';const a=document.createElement('span');a.textContent=label;const b=document.createElement('strong');b.textContent=val;d.append(a,b);return d};
 function render(){renderDate();const dayType=db.dayTypes?.[logDate()]||db.day||'gymrun';$('daytype').value=dayType;const meals=db.meals.filter(x=>x.date===logDate()),sets=db.sets.filter(x=>x.date===logDate());const cal=meals.reduce((v,m)=>v+Number(m.calories||0),0),protein=meals.reduce((v,m)=>v+Number(m.protein||0),0),total=target[dayType]||target.gymrun;$('cal').textContent=Math.round(cal).toLocaleString();$('prot').textContent=Math.round(protein)+'g';$('remaining').textContent=Math.abs(Math.round(total-cal)).toLocaleString();$('balanceLabel').textContent=cal>total?'Above daily goal':cal===total?'Daily goal reached':logDate()===now()?'Remaining today':'Remaining for this day';$('balanceUnit').textContent=cal>total?'kcal above your goal':cal===total?'kcal remaining':'kcal to your goal';$('energyArc').setAttribute('stroke-dasharray',Math.min(100,Math.max(0,cal/total*100))+' 100');$('energyArc').style.opacity=cal>0?'1':'0';$('calTarget').textContent=total.toLocaleString();meter('calProgress','calFill',cal,total);meter('proteinProgress','proteinFill',protein,125);$('todayDate').textContent=new Date(logDate()+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});$('setsToday').textContent=sets.reduce((sum,s)=>sum+(Array.isArray(s.setDetails)?s.setDetails.length:Number(s.sets||0)),0);meter('setsProgress','setsFill',Number($('setsToday').textContent),12);
 $('proteinRemaining').textContent=Math.max(0,Math.round(125-protein));$('proteinRemainingLabel').textContent=protein>=125?'g left · done':'g left';$('proteinStatus').textContent=protein>=125?'Goal met':Math.round(protein/125*100)+'%';const setCount=Number($('setsToday').textContent);$('setsRemaining').textContent=Math.max(0,12-setCount);$('setsRemainingLabel').textContent=setCount>=12?'left · done':'sets left';$('trainingStatus').textContent=setCount>=12?'Goal met':Math.round(setCount/12*100)+'%';
-renderFeed(meals,sets);const h=$('history');h.replaceChildren();for(const v of [...db.measurements].reverse().slice(0,14))h.append(row(v.date,v.weight+' kg · '+v.waist+' cm'));renderWellness()}
+renderFeed(meals,sets);renderTraining();const h=$('history');h.replaceChildren();for(const v of [...db.measurements].reverse().slice(0,14))h.append(row(v.date,v.weight+' kg · '+v.waist+' cm'));renderWellness()}
 
 function qualityMeta(status){return {balanced:['Balanced','#b9d5b0','balanced'],mindful:['Be mindful','#edb86f','mindful'],uncertain:['Not assessed','#b9b0df','uncertain']}[status]||['Not assessed','#b9b0df','uncertain']}
 function mealCard(m){const card=document.createElement('article');card.className='meal-card';const top=document.createElement('div');top.className='meal-top';const left=document.createElement('div');left.className='meal-info';const title=document.createElement('strong');title.className='meal-title';title.textContent=m.name||'Meal';const sub=document.createElement('p');sub.className='meal-sub';sub.textContent=Math.round(m.calories||0)+' kcal  ·  '+Math.round(m.protein||0)+'g protein';left.append(title,sub);const edit=document.createElement('button');edit.className='edit-meal';edit.textContent='Edit';edit.setAttribute('aria-label','Edit '+(m.name||'meal'));edit.onclick=()=>editMeal(m,card);top.append(left,edit);card.append(top);const [label,color,cls]=qualityMeta(m.quality?.status);const badge=document.createElement('span');badge.className='meal-badge '+cls;badge.textContent='● '+label;badge.style.color=color;card.append(badge);if(m.quality?.reason){const note=document.createElement('p');note.className='meal-note';note.textContent=m.quality.reason;card.append(note)}return card}
@@ -46,6 +46,46 @@ $('foodParse').onclick=async()=>{const text=$('foodDescription').value.trim();if
 let foodRecorder=null,foodStream=null,foodChunks=[];
 $('foodRecord').onclick=async()=>{const btn=$('foodRecord');if(foodRecorder&&foodRecorder.state==='recording'){foodRecorder.stop();btn.textContent='● Start voice logging';return}const mealDate=logDate();try{foodStream=await navigator.mediaDevices.getUserMedia({audio:true});const mime=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(x=>MediaRecorder.isTypeSupported(x));if(!mime)throw Error('Recording not supported in this browser');foodChunks=[];foodRecorder=new MediaRecorder(foodStream,{mimeType:mime});foodRecorder.ondataavailable=e=>{if(e.data.size)foodChunks.push(e.data)};foodRecorder.onstop=async()=>{foodStream.getTracks().forEach(t=>t.stop());$('foodRecordStatus').textContent='Transcribing and estimating food…';try{const f=new File(foodChunks,'meal',{type:mime});const result=await call('food-voice',{audio:await fileB64(f),mime});$('foodDescription').value=result.transcript||'';foodReview(result,$('foodVoiceResult'),mealDate);$('foodRecordStatus').textContent='Review your meal before saving'}catch(e){notify(e.message);$('foodRecordStatus').textContent='Could not analyze; try text entry'}};foodRecorder.start();btn.textContent='■ Stop & analyze';$('foodRecordStatus').textContent='Recording your meal…'}catch(e){notify(e.message)}};
 
+const exerciseKey=name=>String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+function previousExercise(name,date=logDate()){
+  return [...db.sets].reverse().filter(x=>x.date<date&&exerciseKey(x.exercise)===exerciseKey(name)).sort((a,b)=>b.date.localeCompare(a.date))[0];
+}
+function weightBasis(mode){return mode==='per_side'?'per side':mode==='total'?'total weight':'as entered'}
+function renderTraining(){
+  const entries=db.sets.filter(x=>x.date===logDate());
+  $('trainingDate').textContent=logDate()===now()?'Today’s training':dateLabel(logDate());
+  $('trainingExercises').textContent=entries.length;
+  $('trainingSets').textContent=entries.reduce((n,x)=>n+workoutSetRows(x).length,0);
+  const host=$('trainingExercisesList');host.replaceChildren();
+  if(!entries.length){const empty=document.createElement('div');empty.className='training-empty';const title=document.createElement('strong');title.textContent='Your next set starts here.';const copy=document.createElement('p');copy.textContent='Add an exercise, log each set, and keep your previous numbers in view.';empty.append(title,copy);host.append(empty)}
+  for(const [i,x] of entries.entries())host.append(trainingCard(x,i+1));
+  const recent=$('recentExercises');recent.replaceChildren();
+  const seen=new Set();
+  for(const x of [...db.sets].reverse().filter(x=>x.date<logDate()).sort((a,b)=>b.date.localeCompare(a.date))){
+    const key=exerciseKey(x.exercise);if(!key||seen.has(key))continue;seen.add(key);if(seen.size>4)break;
+    const b=document.createElement('button');b.className='repeat-exercise';b.textContent='+ '+x.exercise;b.setAttribute('aria-label','Repeat '+x.exercise+' from '+dateLabel(x.date));b.onclick=()=>{workoutForm({...x,transcript:'',warning:''},logDate());$('workoutresult').scrollIntoView?.({behavior:'smooth',block:'start'})};recent.append(b);
+  }
+  $('recentExerciseSection').hidden=!recent.childNodes.length;
+}
+function trainingCard(x,number){
+  const card=document.createElement('article');card.className='glass training-exercise';
+  const header=document.createElement('div');header.className='training-exercise-heading';
+  const badge=document.createElement('span');badge.className='exercise-number';badge.textContent=String(number).padStart(2,'0');
+  const title=document.createElement('h2');title.textContent=x.exercise;
+  const edit=document.createElement('button');edit.className='edit-meal';edit.textContent='Edit sets';edit.setAttribute('aria-label','Edit sets for '+x.exercise);edit.onclick=()=>{workoutForm(x,x.date,x);$('workoutresult').scrollIntoView?.({behavior:'smooth',block:'start'})};header.append(badge,title,edit);card.append(header);
+  const previous=previousExercise(x.exercise,x.date);
+  const caption=document.createElement('p');caption.className='training-comparison small muted';caption.textContent=previous?'Previous: '+dateLabel(previous.date)+' · '+weightBasis(previous.weightMode):'First log for this exercise';card.append(caption);
+  const table=document.createElement('table');table.className='training-set-table';
+  const thead=document.createElement('thead');const labels=document.createElement('tr');
+  for(const text of ['Set','Previous',x.weightMode==='per_side'?'Kg / side':'Kg','Reps']){const th=document.createElement('th');th.scope='col';th.textContent=text;labels.append(th)}thead.append(labels);table.append(thead);
+  const tbody=document.createElement('tbody'),oldRows=previous?workoutSetRows(previous):[];
+  for(const [i,s] of workoutSetRows(x).entries()){
+    const tr=document.createElement('tr');
+    for(const [j,text] of [String(i+1),oldRows[i]?oldRows[i].weight+' × '+oldRows[i].reps:'—',String(s.weight),String(s.reps)].entries()){const td=document.createElement(j===0?'th':'td');if(j===0)td.scope='row';td.textContent=text;tr.append(td)}tbody.append(tr);
+  }table.append(tbody);card.append(table);
+  const footer=document.createElement('div');footer.className='training-card-footer';const count=document.createElement('span');count.textContent=workoutSetRows(x).length+' sets logged · '+weightBasis(x.weightMode);
+  const add=document.createElement('button');add.className='training-add-set';add.textContent='+ Add set';add.onclick=()=>{workoutForm(x,x.date,x);$('workoutresult').querySelector('.add-set').onclick();$('workoutresult').scrollIntoView?.({behavior:'smooth',block:'start'})};footer.append(count,add);card.append(footer);return card;
+}
 function workoutSetRows(x){
   const details=Array.isArray(x.setDetails)?x.setDetails:[];
   const count=Math.min(50,Math.max(1,details.length,Number.isInteger(+x.sets)&&+x.sets>0?+x.sets:0));
@@ -56,7 +96,10 @@ function workoutForm(x,workoutDate=logDate(),existing=null){
   const title=document.createElement('h2');title.textContent=existing?'Edit exercise':'Review your sets';host.append(title);
   const dateText=document.createElement('p');dateText.className='small muted';dateText.textContent='Workout date: '+dateLabel(workoutDate);host.append(dateText);
   if(x.transcript){const heard=document.createElement('p');heard.className='small muted';heard.textContent='Heard: '+x.transcript;host.append(heard)}
-  const exercise=makeField('Exercise',x.exercise||'');host.append(exercise.wrap);
+  const exercise=makeField('Exercise',x.exercise||'');exercise.input.setAttribute('list','knownExercises');host.append(exercise.wrap);
+  const suggestions=document.createElement('datalist');suggestions.id='knownExercises';
+  for(const name of [...new Set(db.sets.map(s=>s.exercise).filter(Boolean))]){const option=document.createElement('option');option.value=name;suggestions.append(option)}host.append(suggestions);
+  const previousPanel=document.createElement('div');previousPanel.className='previous-session';host.append(previousPanel);
   const basisLabel=document.createElement('label');basisLabel.textContent='How is the weight recorded?';
   const basis=document.createElement('select');basis.id='weight-basis-'+(++fieldSequence);basisLabel.htmlFor=basis.id;
   for(const [value,label] of [['unspecified','As entered (basis not specified)'],['per_side','Per side / each side'],['total','Total weight']]){const option=document.createElement('option');option.value=value;option.textContent=label;basis.append(option)}
@@ -79,14 +122,21 @@ function workoutForm(x,workoutDate=logDate(),existing=null){
   add.onclick=()=>{if(rows.length<50)addRow({weight:'',reps:''})};
   for(const values of workoutSetRows(x))addRow(values);
   host.append(add);
+  function showPrevious(){
+    previousPanel.replaceChildren();const old=previousExercise(exercise.input.value,workoutDate);previousPanel.hidden=!old;if(!old)return;
+    const label=document.createElement('strong');label.textContent='Last time · '+dateLabel(old.date);const copy=document.createElement('p');copy.textContent=workoutSetRows(old).map(s=>s.weight+' kg × '+s.reps).join(' · ')+' ('+weightBasis(old.weightMode)+')';previousPanel.append(label,copy);
+    if(!existing){const reuse=document.createElement('button');reuse.className='secondary';reuse.textContent='Use last session’s sets';reuse.onclick=()=>{rows.splice(0,rows.length);list.replaceChildren();basis.value=['per_side','total'].includes(old.weightMode)?old.weightMode:'unspecified';for(const s of workoutSetRows(old))addRow(s)};previousPanel.append(reuse)}
+  }
+  exercise.input.onchange=showPrevious;showPrevious();
   const saveButton=button(existing?'Save workout changes':'Confirm and save workout',()=>{
     const setDetails=rows.map(r=>({weight:Number(r.weight.input.value),reps:Number(r.reps.input.value)}));
     if(!exercise.input.value.trim()||rows.some(r=>!r.weight.input.value.trim()||!r.reps.input.value.trim())||setDetails.some(s=>!Number.isFinite(s.weight)||s.weight<0||!Number.isInteger(s.reps)||s.reps<1))return notify('Enter an exercise and valid weight and reps for every set. Use 0 kg for bodyweight.');
     const entry={date:workoutDate,exercise:exercise.input.value.trim(),sets:setDetails.length,weightMode:basis.value,setDetails};
     if(existing)Object.assign(existing,entry);else db.sets.push(entry);
-    selectedDate=workoutDate===now()?null:workoutDate;save();host.replaceChildren();notify(existing?'Workout updated':'Workout saved');
+    selectedDate=workoutDate===now()?null:workoutDate;save();host.replaceChildren();$('quickWorkoutLog').open=false;show('workout');notify(existing?'Workout updated':'Workout saved');
   });saveButton.classList.add('workout-save');host.append(saveButton);
-  if(existing){const cancel=document.createElement('button');cancel.className='secondary';cancel.textContent='Cancel editing';cancel.onclick=()=>{host.replaceChildren();show('home')};host.append(cancel)}
+  const cancel=document.createElement('button');cancel.className='secondary workout-cancel';cancel.textContent='Cancel';cancel.onclick=()=>{host.replaceChildren();show('workout')};host.append(cancel);
+  host.scrollIntoView?.({behavior:'smooth',block:'start'});
 }
 function workoutCard(x){
   const item=document.createElement('article');item.className='workout-row';
@@ -104,6 +154,7 @@ function workoutCard(x){
   item.append(list);return item;
 }
 $('manualWorkout').onclick=()=>workoutForm({});
+$('openQuickLog').onclick=()=>{$('quickWorkoutLog').open=true;$('quickWorkoutLog').scrollIntoView?.({behavior:'smooth',block:'start'})};
 $('parse').onclick=async()=>{const workoutDate=logDate();try{const text=$('transcript').value.trim();if(!text)return notify('Type an exercise first');workoutForm(await call('parse',{text}),workoutDate)}catch(e){notify(e.message)}};
 $('record').onclick=async()=>{const b=$('record');if(mediaRecorder&&mediaRecorder.state==='recording'){mediaRecorder.stop();b.textContent='● Start recording';return}const workoutDate=logDate();try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});const mime=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(x=>MediaRecorder.isTypeSupported(x));if(!mime)throw Error('Your browser does not support audio recording');chunks=[];mediaRecorder=new MediaRecorder(stream,{mimeType:mime});mediaRecorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};mediaRecorder.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());$('recordstatus').textContent='Transcribing your set…';try{const f=new File(chunks,'workout',{type:mime});const result=await call('voice',{audio:await fileB64(f),mime});$('transcript').value=result.transcript||'';workoutForm(result,workoutDate);$('recordstatus').textContent='Review the result before saving'}catch(e){notify(e.message);$('recordstatus').textContent='Try again or type your exercise'}};mediaRecorder.start();b.textContent='■ Stop & analyze';$('recordstatus').textContent='Recording… speak your set'}catch(e){notify(e.message)}};
 $('saveprogress').onclick=()=>{const weight=Number($('weight').value),waist=Number($('waist').value);if(weight<=0||waist<=0)return notify('Enter valid weight and waist measurements');db.measurements.push({date:logDate(),weight,waist});save();notify('Progress saved')};
