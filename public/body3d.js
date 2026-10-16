@@ -1,87 +1,56 @@
-// A procedural, symbolic mannequin. No external models or user data are loaded.
-const stage=document.getElementById('bodyStage'),panel=document.getElementById('weeklyBodyPanel');
-const fallback=document.getElementById('bodyFallback'),hint=document.getElementById('bodyRenderHint');
+// Flat SVG muscle map. Existing IDs preserve workout-log integration.
+const svg=document.getElementById('bodyFallback');
+const stage=document.getElementById('bodyStage');
 const reduce=window.matchMedia('(prefers-reduced-motion: reduce)');
-let animate=!reduce.matches,view='front',target=0,renderer,scene,camera,body,meshes=[],initializing=false,failed=false,visible=false,frame=0,then=0,state=window.weeklyBodyState;
-function motionLabel(){const b=document.getElementById('bodyMotion');b.textContent=animate?'Pause motion':'Resume motion';b.setAttribute('aria-pressed',String(animate));fallback.style.animationPlayState=animate?'running':'paused'}
-motionLabel();
-function active(){return visible&&panel.open&&!document.hidden&&!document.getElementById('workout').hidden}
-function viewState(next){view=next;target=next==='back'?Math.PI:0;document.getElementById('bodyFront').setAttribute('aria-pressed',String(next==='front'));document.getElementById('bodyBack').setAttribute('aria-pressed',String(next==='back'));document.getElementById('fallbackFront').style.display=next==='front'?'':'none';document.getElementById('fallbackBack').style.display=next==='back'?'':'none';if(body&&!animate){body.rotation.y=target;draw(0)}sync()}
-document.getElementById('bodyFront').onclick=()=>viewState('front');
-document.getElementById('bodyBack').onclick=()=>viewState('back');
-document.getElementById('bodyMotion').onclick=()=>{animate=!animate;motionLabel();sync()};
-reduce.addEventListener('change',()=>{animate=!reduce.matches;motionLabel();sync()});
-function applyState(){
-  if(!renderer||!state)return;const max=Math.max(1,...Object.values(state.counts));
-  for(const mesh of meshes){const key=mesh.userData.muscle,count=state.counts[key]||0;mesh.userData.active=count>0;const selected=state.selected===key;mesh.material.color.set(selected?'#ffe1ad':count?'#c89653':'#67705c');if(count&&!selected)mesh.material.color.multiplyScalar(.65+.35*count/max);if(state.selected&&!selected)mesh.material.color.multiplyScalar(.55);mesh.material.emissive.set(count?'#b8752a':'#000000');mesh.material.emissiveIntensity=count ? .13 : 0}
-  if(!animate)draw(0);sync();
+let motion=!reduce.matches;
+const paths={
+shoulders:'M73 76 Q52 78 48 103 L61 108 Q64 88 79 88Z',
+chest:'M98 83 Q83 79 70 92 L65 111 Q80 120 98 110Z',
+biceps:'M59 111 Q48 108 44 125 L39 143 Q48 150 54 136 L61 119Z',
+forearms:'M40 146 Q32 151 29 170 L22 190 30 194 Q42 181 47 159Z',
+core:'M98 116 Q87 113 82 119 L84 131 98 132Z M98 136 L85 135 86 147 98 149Z M98 153 L86 151 88 166 98 171Z M98 175 L89 171 91 187 98 199Z M79 120 L70 116 73 148 84 165 81 143Z',
+quads:'M77 202 Q66 221 68 247 L75 278 Q84 271 85 246 L85 212Z M87 216 L87 251 81 280 Q92 280 94 260 L96 231Z',
+calves:'M75 292 Q66 310 75 337 L81 350 85 326 83 296Z',
+back:'M98 80 L80 78 68 93 76 111 98 125Z M69 116 L78 150 91 170 98 145 98 130Z M98 151 L89 176 91 197 98 202Z',
+triceps:'M58 111 Q48 109 43 128 L39 145 Q49 151 55 134Z',
+glutes:'M96 202 Q80 191 74 208 L72 228 Q83 239 97 226Z',
+hamstrings:'M74 234 Q68 253 76 279 L84 283 88 263 88 238Z M92 234 L91 269 86 284 94 280 97 246Z'
+};
+function region(key,d){return '<g data-muscle="'+key+'"><path d="'+d+'"/><path d="'+d+'" transform="translate(200 0) scale(-1 1)"/></g>'}
+const outline='M89 61 L88 72 Q62 72 51 85 Q43 95 42 114 L33 145 25 171 17 191 Q10 199 14 207 Q18 214 24 207 L32 198 42 178 54 153 63 129 69 151 74 181 69 207 63 236 68 274 70 290 66 317 73 351 72 365 63 375 Q61 380 69 381 L87 379 89 368 89 344 94 309 95 284 100 246 105 284 106 309 111 344 111 368 113 379 131 381 Q139 380 137 375 L128 365 127 351 134 317 130 290 132 274 137 236 131 207 126 181 131 151 137 129 146 153 158 178 168 198 176 207 Q182 214 186 207 Q190 199 183 191 L175 171 167 145 158 114 Q157 95 149 85 Q138 72 112 72 L111 61Z';
+svg.innerHTML='<title>Weekly training muscle map</title><path class="body-outline" d="'+outline+'"/><path class="body-head" d="M100 12 Q80 12 81 34 L83 47 91 60 109 60 117 47 119 34 Q120 12 100 12Z"/><g id="fallbackFront">'+['shoulders','chest','biceps','forearms','core','quads','calves'].map(k=>region(k,paths[k])).join('')+'</g><g id="fallbackBack" style="display:none">'+['shoulders','back','triceps','forearms','glutes','hamstrings','calves'].map(k=>region(k,paths[k])).join('')+'</g>';
+stage.dataset.renderer='svg';
+document.getElementById('bodyRenderHint').textContent='Tap a muscle to explore';
+function view(next){
+document.getElementById('fallbackFront').style.display=next==='front'?'':'none';
+document.getElementById('fallbackBack').style.display=next==='back'?'':'none';
+for(const side of ['Front','Back'])document.getElementById('body'+side).setAttribute('aria-pressed',String(side.toLowerCase()===next));
+svg.setAttribute('aria-label',next+' muscle map. Highlighted regions show logged sets.');
 }
-function draw(time){
-  if(!renderer)return;
-  const moving=animate;
-  body.rotation.y=moving?body.rotation.y+(target-body.rotation.y)*.09:target;
-  body.position.y=moving?Math.sin(time*.0008)*.018:0;
-  for(const mesh of meshes)if(mesh.userData.active)mesh.material.emissiveIntensity=moving ? .13+Math.sin(time*.002)*.045 : .13;
-  renderer.render(scene,camera);
+function paint(state){
+if(!state)return;
+const max=Math.max(1,...Object.values(state.counts));
+for(const part of svg.querySelectorAll('[data-muscle]')){
+ const key=part.dataset.muscle,count=state.counts[key]||0,selected=state.selected===key;
+ part.style.fill=count?'hsl(212 88% '+(42+22*count/max)+'%)':'#454653';
+ part.style.opacity=state.selected&&!selected?'.32':'1';
+ part.style.filter='none';
+ part.classList.toggle('is-selected',selected);
+ part.setAttribute('role','button');part.setAttribute('tabindex','0');
+ part.setAttribute('aria-label',window.WorkoutMuscles.groups[key]+': '+count+' logged sets');
+ part.setAttribute('aria-pressed',String(selected));
 }
-function loop(time){frame=0;if(!active()||!animate)return;if(time-then>32){draw(time);then=time}frame=requestAnimationFrame(loop)}
-function sync(){
-  if(!active()){if(frame)cancelAnimationFrame(frame);frame=0;return}
-  if(!renderer&&!initializing&&!failed){init();return}
-  if(renderer){resize();if(animate&&!frame)frame=requestAnimationFrame(loop);if(!animate){if(frame)cancelAnimationFrame(frame);frame=0;draw(0)}}
 }
-function resize(){if(!renderer)return;const w=stage.clientWidth,h=stage.clientHeight-48;if(!w||h<=0)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.position.z=camera.aspect<.75?8.5:7.6;camera.updateProjectionMatrix()}
-async function init(){
-  initializing=true;
-  try{
-    const THREE=await import('/vendor/three.module.js');
-    renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.7));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
-    renderer.domElement.setAttribute('role','img');renderer.domElement.setAttribute('aria-label','Interactive symbolic 3D body. Highlighted regions show logged training coverage.');renderer.domElement.style.touchAction='pan-y';
-    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(34,1,.1,40);camera.position.set(0,.6,7.6);camera.lookAt(0,.48,0);
-    scene.add(new THREE.HemisphereLight(0xffedcf,0x242d22,2));
-    const key=new THREE.DirectionalLight(0xffe5bf,3.4);key.position.set(-3,4,4);scene.add(key);
-    const rim=new THREE.DirectionalLight(0xc5c0ef,3.3);rim.position.set(3,2,-3);scene.add(rim);
-    const fill=new THREE.DirectionalLight(0xb9d5b0,1);fill.position.set(0,1,4);scene.add(fill);
-    body=new THREE.Group();scene.add(body);
-    const geometry=new THREE.SphereGeometry(1,28,20);
-    function part(muscle,x,y,z,sx,sy,sz,angle=0){const material=new THREE.MeshStandardMaterial({color:muscle?0x67705c:0x343d30,roughness:.36,metalness:.28});const mesh=new THREE.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);mesh.rotation.z=angle;mesh.userData.muscle=muscle;if(muscle)meshes.push(mesh);body.add(mesh);return mesh}
-    part(null,0,2.22,0,.24,.31,.225);part(null,0,1.87,0,.13,.18,.13);
-    part(null,0,1.15,0,.44,.63,.23);part(null,0,.5,0,.34,.25,.23);
-    for(const side of [-1,1]){
-      part('chest',side*.245,1.45,.185,.275,.265,.145,side*.08);
-      part('shoulders',side*.55,1.59,0,.225,.235,.24,-side*.2);
-      part(null,side*.70,1.17,0,.145,.38,.15,side*.22);
-      part('biceps',side*.70,1.19,.095,.14,.29,.12,side*.22);
-      part('triceps',side*.70,1.2,-.1,.145,.30,.115,side*.22);
-      part('forearms',side*.84,.61,.02,.115,.32,.13,side*.19);
-      part(null,side*.91,.23,.035,.102,.17,.085,side*.1);
-      part('back',side*.225,1.30,-.17,.26,.44,.13,-side*.12);
-      part('glutes',side*.17,.39,-.15,.19,.23,.18);
-      part(null,side*.22,-.15,0,.205,.55,.21);
-      part('quads',side*.22,-.1,.115,.18,.48,.15,-side*.025);
-      part('hamstrings',side*.22,-.13,-.12,.175,.46,.14);
-      part(null,side*.23,-.65,.02,.135,.14,.145);
-      part(null,side*.24,-1.04,.035,.115,.38,.13);
-      part('calves',side*.24,-.98,-.075,.13,.30,.145);
-      part(null,side*.24,-1.46,.12,.14,.10,.26);
-    }
-    for(const y of [1.12,.91,.71])for(const side of [-1,1])part('core',side*.112,y,.224,.105,.101,.066);
-    const platform=new THREE.Mesh(new THREE.CylinderGeometry(.83,.92,.06,64),new THREE.MeshStandardMaterial({color:0x343d2b,metalness:.55,roughness:.5}));platform.position.y=-1.62;scene.add(platform);
-    const ring=new THREE.Mesh(new THREE.TorusGeometry(.87,.009,8,80),new THREE.MeshBasicMaterial({color:0xab8b5e,transparent:true,opacity:.65}));ring.rotation.x=Math.PI/2;ring.position.y=-1.58;scene.add(ring);
-    body.rotation.y=target;stage.append(renderer.domElement);fallback.hidden=true;fallback.style.display='none';hint.textContent='Drag to rotate · tap a muscle';stage.dataset.renderer='webgl';
-    let down=null;const raycaster=new THREE.Raycaster();
-    renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY,last:e.clientX,moved:0};renderer.domElement.setPointerCapture(e.pointerId)});
-    renderer.domElement.addEventListener('pointermove',e=>{if(!down)return;const delta=e.clientX-down.last;down.moved+=Math.abs(delta);target+=delta*.012;down.last=e.clientX;if(down.moved>6){document.getElementById('bodyFront').setAttribute('aria-pressed','false');document.getElementById('bodyBack').setAttribute('aria-pressed','false')}if(!animate){body.rotation.y=target;renderer.render(scene,camera)}});
-    renderer.domElement.addEventListener('pointerup',e=>{if(down&&down.moved<6&&Math.abs(e.clientY-down.y)<6){const rect=renderer.domElement.getBoundingClientRect();raycaster.setFromCamera(new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),camera);const hit=raycaster.intersectObjects(body.children,false)[0];if(hit?.object.userData.muscle)window.dispatchEvent(new CustomEvent('muscle-pick',{detail:hit.object.userData.muscle}))}down=null});
-    renderer.domElement.addEventListener('pointercancel',()=>{down=null});
-    renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();if(frame)cancelAnimationFrame(frame);frame=0;renderer.domElement.style.display='none';fallback.hidden=false;fallback.style.display='';hint.textContent='Muscle map · 3D unavailable';failed=true;renderer=null});
-    resize();applyState();draw(0);initializing=false;sync();
-  }catch(error){if(renderer){renderer.dispose();renderer.domElement.remove()}renderer=null;initializing=false;failed=true;fallback.hidden=false;fallback.style.display='';hint.textContent='Muscle map · 3D unavailable';stage.dataset.renderer='fallback'}
-}
-window.addEventListener('weekly-muscles',e=>{const picked=e.detail.selected;if(picked&&picked!==state?.selected)viewState(['back','triceps','glutes','hamstrings','calves'].includes(picked)?'back':'front');state=e.detail;applyState()});
-document.addEventListener('visibilitychange',sync);panel.addEventListener('toggle',sync);
-new MutationObserver(sync).observe(document.getElementById('workout'),{attributes:true,attributeFilter:['hidden']});
-new ResizeObserver(()=>{resize();if(renderer&&!animate)draw(0)}).observe(stage);
-new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;sync()},{rootMargin:'100px'}).observe(stage);
-window.addEventListener('pagehide',()=>{if(frame)cancelAnimationFrame(frame);frame=0});
+function pick(e){const part=e.target.closest('[data-muscle]');if(part)window.dispatchEvent(new CustomEvent('muscle-pick',{detail:part.dataset.muscle}))}
+svg.addEventListener('click',pick);
+svg.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(e)}});
+document.getElementById('bodyFront').onclick=()=>view('front');
+document.getElementById('bodyBack').onclick=()=>view('back');
+function updateMotion(){const b=document.getElementById('bodyMotion');b.textContent=motion?'Pause highlights':'Animate highlights';b.setAttribute('aria-pressed',String(motion));stage.classList.toggle('animate-highlights',motion)}
+document.getElementById('bodyMotion').onclick=()=>{motion=!motion;updateMotion()};
+reduce.addEventListener('change',()=>{motion=!reduce.matches;updateMotion()});
+window.addEventListener('weekly-muscles',e=>{
+ if(e.detail.selected&&e.detail.selected!==window.bodyMapSelection)view(['back','triceps','glutes','hamstrings'].includes(e.detail.selected)?'back':'front');
+ window.bodyMapSelection=e.detail.selected;paint(e.detail);
+});
+view('front');updateMotion();paint(window.weeklyBodyState);
