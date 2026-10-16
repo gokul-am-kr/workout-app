@@ -5,3 +5,21 @@
 @keyframes body-float{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-5px)}}
 @media(max-width:360px){.weekly-body-card.glass{padding:15px}.weekly-body-card>summary strong{font-size:17px}.muscle-coverage{font-size:9px;padding:7px}.body-stage{height:325px}.body-view-controls button{padding:8px 12px}.body-legend{font-size:8px}}
 @media(prefers-reduced-motion:reduce){#bodyFallback{animation:none}#bodyFallback [data-muscle]{transition:none}}
+
+/* Flat anatomical map */
+.weekly-body-card.glass{background:linear-gradient(145deg,#23232df5,#1b1b24f5)}
+.body-stage{height:410px;background:none;margin-top:10px}
+.body-stage-halo{display:none}
+#bodyFallback{top:8px;width:200px;height:350px;animation:none;overflow:visible}
+.body-outline,.body-head{fill:#30313d;stroke:none}
+#bodyFallback [data-muscle]{fill:#454653;stroke:#252630;stroke-width:1.6;stroke-linejoin:round;cursor:pointer;transition:fill .35s,opacity .25s}
+#bodyFallback [data-muscle]:focus-visible,#bodyFallback [data-muscle].is-selected{outline:none;stroke:#fff0f5;stroke-width:2.4}
+.body-stage-caption>span{color:#b4a9b2}.body-stage-caption strong{color:#eee3e8}
+.body-view-controls{justify-content:center}.body-view-controls button{border-radius:20px}
+.body-view-controls button[aria-pressed=true]{background:#ee467b20;border-color:#ee467b70;color:#ff99b8}
+.body-legend i{background:#454653}.body-legend>span:last-child i{background:linear-gradient(90deg,#b91e49,#ee7096)}
+.muscle-chip.trained{color:#f5a2bd;border-color:#ed638b40}.muscle-chip[aria-pressed=true]{background:#ed638b20;border-color:#ed638b70;color:#ffd4e1}
+.animate-highlights #bodyFallback .is-selected{animation:muscle-emphasis 2.4s ease-in-out infinite}
+@keyframes muscle-emphasis{50%{stroke-width:3.5}}
+@media(max-width:360px){.body-stage{height:390px}#bodyFallback{height:330px}}
+@media(prefers-reduced-motion:reduce){#bodyFallback [data-muscle]{transition:none}.animate-highlights #bodyFallback .is-selected{animation:none}}
