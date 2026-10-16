@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/dates.test.cjs"
+    "test": "node --test tests/*.test.cjs tests/*.test.js"
   },
   "engines": {
     "node": ">=18"
