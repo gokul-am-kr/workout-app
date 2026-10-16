@@ -19,7 +19,7 @@ function setup(){
  sandbox.MediaRecorder=class{static isTypeSupported(){return true}constructor(){sandbox.recorder=this;this.state='inactive'}start(){this.state='recording'}stop(){this.state='inactive';this.onstop()}};
  window.scrollTo=()=>{};vm.createContext(sandbox);
  const run=code=>vm.runInContext(code,sandbox);
- run(fs.readFileSync(path.join(root,'public/app.js'),'utf8'));sandbox.show=window.show;
+ run(fs.readFileSync(path.join(root,'public/muscles.js'),'utf8'));run(fs.readFileSync(path.join(root,'public/app.js'),'utf8'));sandbox.show=window.show;
  return {run,$:id=>window.document.getElementById(id),window,sandbox,read:()=>JSON.parse(stored),resolve:()=>pendingResolve(),sample};
 }
 test('date navigation, local calendar dates, legacy data and independent daily goals',()=>{
@@ -113,4 +113,11 @@ test('card Add set opens editor without mutating saved workout until confirmatio
  $('trainingExercisesList').querySelector('.training-add-set').onclick();assert.equal($('workoutresult').querySelectorAll('.set-editor-row').length,2);assert.equal(read().sets[0].sets,1);
  $('workoutresult').querySelector('.workout-cancel').onclick();assert.equal($('workoutresult').textContent,'');assert.equal(read().sets[0].sets,1);
  $('openQuickLog').onclick();assert.equal($('quickWorkoutLog').open,true);
+});
+test('weekly body updates with selected date and user-corrected muscle mappings',()=>{
+ const {run,$,read}=setup();run("db.sets=[{date:'2024-03-01',exercise:'Custom exercise',sets:3,reps:10,weight:20}];selectDate('2024-03-01')");
+ assert.match($('muscleUnknown').textContent,/Custom exercise/);assert.equal($('muscleCoverage').textContent,'0 / 11 groups');
+ const chest=$('muscleMappingChoices').querySelector('input[value=chest]');chest.checked=true;$('saveMuscleMapping').onclick();assert.equal(read().muscleOverrides['custom exercise'][0],'chest');assert.equal($('muscleCoverage').textContent,'1 / 11 groups');
+ run("selectMuscle('chest')");assert.match($('muscleSelection').textContent,/3 sets involving this muscle/);
+ run("selectDate('2024-03-08')");assert.equal($('muscleCoverage').textContent,'0 / 11 groups');
 });
