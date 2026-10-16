@@ -92,3 +92,25 @@ test('workout parsing retains selected date while response is pending',async()=>
  run("selectDate('2024-02-29')");$('transcript').value='Incline chest press 20 kg per side 15 reps then 25 kg 10 reps';const task=$('parse').onclick();run("selectDate('2024-03-01')");t.resolve();await task;
  $('workoutresult').querySelector('.workout-save').onclick();assert.equal(t.read().sets[0].date,'2024-02-29');assert.equal($('logDate').value,'2024-02-29');assert.equal(t.read().sets[0].setDetails[1].weight,25);
 });
+test('Train screen shows prior-session rows and ignores same-day/future history',()=>{
+ const {run,$}=setup();
+ run("selectDate('2024-03-03');db.sets=[{date:'2024-03-04',exercise:'Incline chest press',sets:1,weight:99,reps:99},{date:'2024-02-29',exercise:'Incline chest press',sets:1,weight:15,reps:15},{date:'2024-03-01',exercise:'incline chest press',sets:1,weightMode:'total',weight:18,reps:12},{date:'2024-03-03',exercise:'Incline chest press',sets:1,weightMode:'per_side',setDetails:[{weight:20,reps:15}]}];render()");
+ assert.equal($('trainingExercises').textContent,'1');assert.equal($('trainingSets').textContent,'1');
+ const card=$('trainingExercisesList').querySelector('article');assert.match(card.textContent,/18 × 12/);assert.doesNotMatch(card.textContent,/99/);assert.match(card.textContent,/total weight/);assert.match(card.textContent,/Kg \/ side/);
+ assert.equal($('recentExercises').querySelectorAll('button').length,1);
+});
+test('repeat and use-last-sets actions require review and preserve historical data',()=>{
+ const {run,$,read}=setup();
+ run("selectDate('2024-03-03');db.sets=[{date:'2024-03-01',exercise:'Chest press',sets:2,weightMode:'per_side',setDetails:[{weight:20,reps:15},{weight:25,reps:10}]}];save()");
+ $('recentExercises').querySelector('button').onclick();assert.equal(read().sets.length,1);assert.equal($('workoutresult').querySelectorAll('.set-editor-row').length,2);
+ $('workoutresult').querySelector('.workout-cancel').onclick();assert.equal(read().sets.length,1);
+ $('manualWorkout').onclick();const name=$('workoutresult').querySelector('input');name.value='Chest press';name.onchange();
+ const panel=$('workoutresult').querySelector('.previous-session');assert.equal(panel.hidden,false);panel.querySelector('button').onclick();assert.equal($('workoutresult').querySelectorAll('.set-editor-row').length,2);
+ $('workoutresult').querySelector('.workout-save').onclick();const data=read();assert.equal(data.sets.length,2);assert.equal(data.sets[0].date,'2024-03-01');assert.equal(data.sets[1].date,'2024-03-03');assert.equal(data.sets[1].setDetails[1].weight,25);assert.equal(data.sets[1].weightMode,'per_side');
+});
+test('card Add set opens editor without mutating saved workout until confirmation',()=>{
+ const {run,$,read}=setup();run("db.sets=[{date:logDate(),exercise:'Squat',sets:1,reps:10,weight:40}];save()");
+ $('trainingExercisesList').querySelector('.training-add-set').onclick();assert.equal($('workoutresult').querySelectorAll('.set-editor-row').length,2);assert.equal(read().sets[0].sets,1);
+ $('workoutresult').querySelector('.workout-cancel').onclick();assert.equal($('workoutresult').textContent,'');assert.equal(read().sets[0].sets,1);
+ $('openQuickLog').onclick();assert.equal($('quickWorkoutLog').open,true);
+});
