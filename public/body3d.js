@@ -32,7 +32,7 @@ if(!state)return;
 const max=Math.max(1,...Object.values(state.counts));
 for(const part of svg.querySelectorAll('[data-muscle]')){
  const key=part.dataset.muscle,count=state.counts[key]||0,selected=state.selected===key;
- part.style.fill=count?'hsl(345 72% '+(42+22*count/max)+'%)':'#454653';
+ part.style.fill=count?'hsl(212 88% '+(42+22*count/max)+'%)':'#454653';
  part.style.opacity=state.selected&&!selected?'.32':'1';
  part.style.filter='none';
  part.classList.toggle('is-selected',selected);
