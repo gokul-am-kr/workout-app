@@ -32,6 +32,19 @@ test('date navigation, local calendar dates, legacy data and independent daily g
  $('todayShortcut').onclick();assert.equal($('logDate').value,today);assert.equal($('nextDay').disabled,true);
  $('yesterdayShortcut').onclick();assert.notEqual($('logDate').value,today);$('nextDay').onclick();assert.equal($('logDate').value,today);
 });
+test('week strip selects historical days and marks today without enabling future dates',()=>{
+ const {run,$}=setup();run("selectDate('2024-02-29')");
+ let days=[...$('weekStrip').querySelectorAll('button')];
+ assert.equal(days.length,7);assert.equal(days[0].querySelector('strong').textContent,'25');
+ assert.equal(days[4].getAttribute('aria-pressed'),'true');assert.equal($('cal').textContent,'600');
+ days[0].onclick();assert.equal($('logDate').value,'2024-02-25');assert.equal($('cal').textContent,'0');
+ $('todayShortcut').onclick();const today=run('now()');
+ assert.equal($('logDate').value,today);
+ days=[...$('weekStrip').querySelectorAll('button')];
+ const todayIndex=days.findIndex(b=>b.classList.contains('today'));
+ assert.ok(todayIndex>=0);assert.equal(days[todayIndex].getAttribute('aria-pressed'),'true');
+ days.forEach((button,index)=>assert.equal(button.disabled,index>todayIndex));
+});
 test('review and edit meal dates, invalid dates rejected, today remains unchanged',()=>{
  const t=setup(),{run,$,read,window}=t;
  run("selectDate('2024-02-29')");t.sandbox.sample=t.sample;run("foodReview(sample,$('foodVoiceResult'))");
